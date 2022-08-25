@@ -2,6 +2,7 @@ const { v4: uuidv4 } = require("uuid");
 // uuidv4();
 const HttpError = require("../models/http-error");
 const { validationResult } = require("express-validator");
+const getCoordsForAddress = require("../util/location");
 
 // Database Modeling, it's pretend data as if there were a DB, very smart
 let DUMMY_PLACES = [
@@ -51,15 +52,24 @@ const getPlacesByUserId = (req, res, next) => {
   res.json({ places }); // { place } => {place: place}
 };
 
-const createPlace = (req, res, next) => {
+const createPlace = async (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     console.log(errors);
-    throw new HttpError("invalid inputs passed, please check your data", 422);
+    // always need to next errors in async code
+    next(new HttpError("invalid inputs passed, please check your data", 422));
   }
 
-  const { title, description, coordinates, address, creator } = req.body;
-  // const title = req.body.title;
+  const { title, description, address, creator } = req.body;
+
+  // convert address to coordinates
+  let coordinates;
+  try {
+    coordinates = await getCoordsForAddress(address);
+  } catch (error) {
+    return next(error);
+  }
+
   const createdPlace = {
     id: uuidv4(),
     title,
@@ -95,6 +105,9 @@ const updatePlace = (req, res, next) => {
 
 const deletePlace = (req, res, next) => {
   let placeId = req.params.pid;
+  if (DUMMY_PLACES.find((p) => p.id === placeId)) {
+    throw new HttpError("could not find a place to delete", 404);
+  }
   DUMMY_PLACES = DUMMY_PLACES.filter((p) => {
     p.id !== placeId;
   });
